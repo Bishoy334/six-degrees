@@ -1,6 +1,8 @@
-# Facebook Social Graph Viewer
+# six-degrees
 
-A personal tool to visualize your Facebook social network as an interactive graph. Scrapes your friends list (and optionally friends-of-friends) using Puppeteer, then displays the connections in a browser-based visualization.
+Visualise your social network as an interactive graph and find out just how true six degrees of separation is.
+
+Currently supports Facebook.
 
 ## Quick Start
 
