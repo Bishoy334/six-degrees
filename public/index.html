@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facebook Social Graph</title>
+  <!-- Sigma.js for WebGL rendering - handles 10k+ nodes smoothly -->
+  <script src="https://unpkg.com/graphology@0.25.4/dist/graphology.umd.min.js"></script>
+  <script src="https://unpkg.com/sigma@2.4.0/build/sigma.min.js"></script>
+  <!-- ForceAtlas2 for optimized force-directed layout -->
+  <script src="https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/build/graphology-layout-forceatlas2.min.js"></script>
+  <!-- Noverlap to prevent node overlaps -->
+  <script src="https://cdn.jsdelivr.net/npm/graphology-layout-noverlap@0.4.2/build/graphology-layout-noverlap.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div id="loading-text">Loading graph...</div>
+  </div>
+
+  <div id="graph-container"></div>
+
+  <div id="controls">
+    <h1>Social Graph Viewer</h1>
+    <div class="stats" id="stats">Loading...</div>
+
+    <div class="control-group">
+      <label>Search by name</label>
+      <input type="text" id="search" placeholder="Type a name...">
+    </div>
+
+    <div class="control-group">
+      <label>Layout Style</label>
+      <select id="layout-select">
+        <option value="forceAtlas">Force-Directed (minimizes overlaps)</option>
+        <option value="radial">Radial (by depth)</option>
+        <option value="spiral">Spiral</option>
+        <option value="grid">Grid</option>
+        <option value="cluster">Clustered</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Spacing: <span id="spacing-val">100%</span></label>
+      <input type="range" id="spacing-slider" min="25" max="500" value="100">
+    </div>
+
+    <div class="control-group">
+      <label>Filter by depth: <span id="depth-val">All</span></label>
+      <input type="range" id="depth-filter" min="0" max="3" value="3">
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-primary" onclick="fitToScreen()">Fit to Screen</button>
+      <button class="btn-secondary" onclick="applyLayout()">Apply Layout</button>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-secondary" onclick="toggleLabels()">Toggle Labels</button>
+      <button class="btn-secondary" onclick="resetHighlight()">Clear Highlight</button>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-secondary" id="path-finder-btn" onclick="togglePathFinderMode()">Path Finder</button>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background: #ff6b6b;"></div>
+        <span>You (depth 0)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #7f8cff;"></div>
+        <span>Friends (depth 1)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #4ecdc4;"></div>
+        <span>Friends of friends (depth 2)</span>
+      </div>
+    </div>
+
+    <div class="shortcuts-hint">
+      <strong>Controls:</strong><br>
+      Scroll: Zoom in/out<br>
+      Drag: Pan the view<br>
+      Click node: View details
+    </div>
+  </div>
+
+  <!-- Zoom controls -->
+  <div id="zoom-controls">
+    <button class="btn-secondary" onclick="zoomIn()" title="Zoom In">+</button>
+    <button class="btn-secondary" onclick="zoomOut()" title="Zoom Out">-</button>
+    <button class="btn-secondary" onclick="fitToScreen()" title="Fit">&#8865;</button>
+  </div>
+
+  <div id="node-info">
+    <h2 id="info-name">Name</h2>
+    <p id="info-depth">Depth: 0</p>
+    <p id="info-connections">Connections: 0</p>
+    <p><a id="info-link" href="#" target="_blank">View on Facebook</a></p>
+
+    <div class="path-info" id="path-info">
+      <h3>Paths to You</h3>
+      <div class="path-stat">
+        <span class="label">Shortest distance:</span>
+        <span class="value" id="path-distance">-</span>
+      </div>
+      <div class="path-stat">
+        <span class="label">Paths found:</span>
+        <span class="value highlight" id="path-count">-</span>
+      </div>
+      <div style="margin-top: 10px;">
+        <button class="btn-secondary" onclick="showPathsToMe()" style="width: 100%;">Show Paths</button>
+      </div>
+      <div id="paths-to-me-container" style="display: none; margin-top: 10px;">
+        <div class="path-list" id="paths-to-me-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Path Finder Panel -->
+  <div id="path-finder-panel">
+    <h3>Path Finder Mode</h3>
+    <p style="font-size: 0.8em; color: #888; margin-bottom: 15px;">Click two nodes to find all paths between them</p>
+
+    <div class="node-selection">
+      <div class="label">Node A (First click)</div>
+      <div class="name" id="pf-node-a-name"><span class="empty">Click a node...</span></div>
+    </div>
+
+    <div class="node-selection">
+      <div class="label">Node B (Second click)</div>
+      <div class="name" id="pf-node-b-name"><span class="empty">Click another node...</span></div>
+    </div>
+
+    <div class="path-results" id="pf-results" style="display: none;">
+      <div class="big-number" id="pf-path-count">0</div>
+      <div class="big-label">paths found</div>
+
+      <div class="path-stat">
+        <span class="label">Shortest path:</span>
+        <span class="value" id="pf-path-length">-</span>
+      </div>
+      <div class="path-stat">
+        <span class="label">Nodes in paths:</span>
+        <span class="value" id="pf-nodes-in-paths">-</span>
+      </div>
+
+      <div class="path-list" id="pf-path-list" style="margin-top: 15px;"></div>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <button class="btn-secondary" onclick="resetPathFinder()" style="width: 100%;">Reset Selection</button>
+    </div>
+  </div>
+
+  <!-- Modular JavaScript files (order matters!) -->
+  <script src="js/config.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/layouts.js"></script>
+  <script src="js/pathfinding.js"></script>
+  <script src="js/highlighting.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
